@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>value1000単語帳 期末テスト</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HOME ============ -->
+  <section id="home" class="screen active">
+    <header class="top">
+      <h1>value1000単語帳</h1>
+    </header>
+    <div class="chip-label">出題範囲</div>
+    <div class="ranges" id="ranges"></div>
+
+    <div class="chip-label">モードを選ぶ</div>
+    <div class="modes">
+      <button class="mode" data-mode="type-order">
+        <span class="ic r">⌨️</span>
+        <span class="tx"><b>タイピング・順番</b><s>902から順に　日本語 → 英語をうつ</s></span>
+        <span class="arrow">›</span>
+      </button>
+      <button class="mode" data-mode="type-random">
+        <span class="ic r">🔀</span>
+        <span class="tx"><b>タイピング・ランダム</b><s>順番シャッフル　日本語 → 英語をうつ</s></span>
+        <span class="arrow">›</span>
+      </button>
+      <button class="mode" data-mode="type-e2j">
+        <span class="ic b">✏️</span>
+        <span class="tx"><b>タイピング・英語 → 日本語</b><s>英単語を見て、意味をうつ（ランダム）</s></span>
+        <span class="arrow">›</span>
+      </button>
+      <button class="mode" data-mode="quiz-e2j">
+        <span class="ic b">🎴</span>
+        <span class="tx"><b>4択クイズ　英語 → 日本語</b><s>英単語を見て意味をえらぶ</s></span>
+        <span class="arrow">›</span>
+      </button>
+      <button class="mode" data-mode="quiz-j2e">
+        <span class="ic g">🎯</span>
+        <span class="tx"><b>4択クイズ　日本語 → 英語</b><s>意味を見て英単語をえらぶ</s></span>
+        <span class="arrow">›</span>
+      </button>
+      <button class="mode" data-mode="list">
+        <span class="ic y">📖</span>
+        <span class="tx"><b>赤シート一覧</b><s>ぜんぶ並べて確認・暗記チェック</s></span>
+        <span class="arrow">›</span>
+      </button>
+    </div>
+    <div class="chip-label">声（発音）</div>
+    <div class="voicebar">
+      <select id="voicesel"><option>読み込み中…</option></select>
+      <button class="vtest" onclick="speak('This is a sample voice.')">🔊 テスト</button>
+    </div>
+    <p class="hintline">※選べる声は端末・ブラウザによります。一番自然なものを選んでください（「Google」「Natural」「Enhanced」などが聞き取りやすい傾向）。</p>
+
+    <div class="foot">タップで開始 · スマホ・PC対応</div>
+  </section>
+
+  <!-- ============ QUIZ ============ -->
+  <section id="quiz" class="screen">
+    <div class="qbar">
+      <button class="back" onclick="goHome()">‹ もどる</button>
+      <div class="progress"><i id="pbar"></i></div>
+      <div class="count" id="pcount">0/0</div>
+    </div>
+
+    <div class="card">
+      <div class="streak" id="streak"></div>
+      <div class="wordno" id="wordno">No.902</div>
+      <div class="dir" id="dir">日本語 → 英語</div>
+      <div class="prompt" id="prompt">—</div>
+      <div class="kana" id="kana"></div>
+
+      <!-- typing -->
+      <div class="typebox" id="typebox">
+        <input id="ans" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
+               spellcheck="false" placeholder="英単語をうつ…">
+      </div>
+
+      <!-- choices -->
+      <div class="choices" id="choices"></div>
+
+      <div class="fb" id="fb"></div>
+      <div class="answer" id="answer"></div>
+      <div class="diff" id="diff"></div>
+      <div class="ex" id="ex"></div>
+
+      <div class="actions">
+        <button class="btn primary" id="submit">こたえる</button>
+        <button class="btn primary hide" id="next">つぎへ ›</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RESULT ============ -->
+  <section id="result" class="screen">
+    <div class="qbar"><button class="back" onclick="goHome()">‹ ホーム</button></div>
+    <div class="result">
+      <svg class="ring" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="#F0ECE0" stroke-width="12"/>
+        <circle id="ringfg" cx="60" cy="60" r="52" fill="none" stroke="#E5483C" stroke-width="12"
+                stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327"
+                transform="rotate(-90 60 60)"/>
+      </svg>
+      <div class="big"><span id="rscore">0</span><small>/<span id="rtotal">0</span></small></div>
+      <div class="msg" id="rmsg"></div>
+      <div class="sub" id="rsub"></div>
+      <div class="actions" style="margin-top:22px">
+        <button class="btn ghost" id="rreview">間違いを復習</button>
+        <button class="btn primary" id="ragain">もう一度</button>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn ghost" onclick="goHome()">ホームへ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIST ============ -->
+  <section id="list" class="screen">
+    <div class="qbar"><button class="back" onclick="goHome()">‹ もどる</button></div>
+    <div class="listhead">
+      <div class="chip-label" style="margin:0">赤シート一覧 · No.902–984</div>
+      <button class="toggle" id="masktoggle">意味をかくす</button>
+    </div>
+    <div id="listbody"></div>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
