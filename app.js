@@ -88,6 +88,7 @@ const WORDS = [
 /* ====================== 状態 ====================== */
 let RANGE = WORDS.slice();           // 出題対象
 let state = null;
+let inputMode = 'keyboard';          // 'keyboard' | 'hand'
 
 const $ = id => document.getElementById(id);
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');window.scrollTo(0,0);}
@@ -209,7 +210,7 @@ function startQuiz(mode, pool){
   let queue;
   if(mode==='type-order') queue = pool.slice().sort((a,b)=>a.n-b.n);
   else queue = shuffle(pool);
-  state={mode, queue, pos:0, score:0, total:queue.length, wrong:[], streak:0, locked:false};
+  state={mode, queue, pos:0, score:0, total:queue.length, wrong:[], streak:0, locked:false, graded:false, lastOk:null};
   show('quiz');
   render();
 }
@@ -231,25 +232,37 @@ function render(){
   $('ex').className='ex';$('ex').innerHTML='';
   $('submit').classList.remove('hide');
   $('next').classList.add('hide');
+  state.graded=false;
+  state.lastOk=null;
+  $('selfgrade').classList.remove('show');
+  $('revealbtn').classList.remove('hide');
+  $('fixbtn').classList.remove('show');
 
   const tb=$('typebox'), ch=$('choices');
   if(isTyping()){
-    tb.style.display='block'; ch.style.display='none'; ch.innerHTML='';
-    const inp=$('ans'); inp.value=''; inp.className=''; inp.disabled=false;
+    ch.style.display='none'; ch.innerHTML='';
+    // 方向ごとの表示（キーボード・手書き共通）
     if(typeIsE2J()){
-      $('dir').textContent='英語 → 日本語（タイピング）';
+      $('dir').textContent='英語 → 日本語'+(inputMode==='hand'?'（手書き）':'（タイピング）');
       $('prompt').className='prompt'; $('prompt').textContent=w.en;
       $('kana').textContent=w.kana;
-      inp.placeholder='日本語の意味をうつ…';
     } else {
-      $('dir').textContent='日本語 → 英語（タイピング）';
+      $('dir').textContent='日本語 → 英語'+(inputMode==='hand'?'（手書き）':'（タイピング）');
       $('prompt').className='prompt'; $('prompt').textContent=w.jp;
       $('kana').textContent='';
-      inp.placeholder='英単語をうつ…';
     }
-    setTimeout(()=>inp.focus(),50);
+    if(inputMode==='hand'){
+      tb.style.display='none'; $('writebox').style.display='block';
+      $('submit').classList.add('hide');
+      setTimeout(setupPad,30);
+    } else {
+      $('writebox').style.display='none'; tb.style.display='block';
+      const inp=$('ans'); inp.value=''; inp.className=''; inp.disabled=false;
+      inp.placeholder = typeIsE2J()?'日本語の意味をうつ…':'英単語をうつ…';
+      setTimeout(()=>inp.focus(),50);
+    }
   } else {
-    tb.style.display='none'; ch.style.display='flex';
+    tb.style.display='none'; $('writebox').style.display='none'; ch.style.display='flex';
     if(isE2J()){
       $('dir').textContent='英語 → 日本語';
       $('prompt').className='prompt'; $('prompt').textContent=w.en;
@@ -332,6 +345,113 @@ function afterAnswer(w){
   state.answeredAt=Date.now();   // 同じEnterで次に飛ばないよう時刻を記録
 }
 
+/* 例文ヒントの共通表示 */
+function showEx(w){
+  $('ex').innerHTML=w.ex.replace(/<b>/g,'<span class="hl">').replace(/<\/b>/g,'</span>')+'<br>'+w.exj;
+  $('ex').classList.add('show');
+}
+/* ちいさな通知 */
+function flash(msg){
+  let t=$('toast');
+  if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),1900);
+}
+
+/* ---- 手書きパッド（線を記録） ---- */
+let padStrokes=[], padW=0, padH=0;
+function setupPad(){
+  const cv=$('pad'); if(!cv||!cv.clientWidth)return;
+  padStrokes=[];
+  const dpr=window.devicePixelRatio||1;
+  cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
+  padW=cv.clientWidth; padH=cv.clientHeight;
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.lineWidth=4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#23262E';
+  cv._ctx=ctx;
+  let drawing=false, cur=null; const t0={v:0};
+  const pos=e=>{const r=cv.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  const add=p=>{ if(!t0.v)t0.v=Date.now(); cur.x.push(Math.round(p.x)); cur.y.push(Math.round(p.y)); cur.t.push(Date.now()-t0.v); };
+  cv.onpointerdown=e=>{e.preventDefault();drawing=true;cur={x:[],y:[],t:[]};const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);add(p);};
+  cv.onpointermove=e=>{if(!drawing)return;e.preventDefault();const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();add(p);};
+  const fin=()=>{ if(drawing&&cur&&cur.x.length) padStrokes.push([cur.x,cur.y,cur.t]); drawing=false; cur=null; };
+  cv.onpointerup=fin; cv.onpointerleave=fin;
+}
+function clearPad(){ const cv=$('pad'); if(cv&&cv._ctx) cv._ctx.clearRect(0,0,cv.width,cv.height); padStrokes=[]; }
+
+/* オンライン手書き認識（Google Input Tools） */
+async function recognizeInk(lang){
+  const body={ options:'enable_pre_space',
+    requests:[{ writing_guide:{writing_area_width:padW, writing_area_height:padH}, ink:padStrokes, language:lang }] };
+  const res=await fetch('https://www.google.com/inputtools/request?ime=handwriting&app=mobilesearch&cs=1&oe=UTF-8',
+    {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const data=await res.json();
+  if(data && data[0]==='SUCCESS' && data[1] && data[1][0] && data[1][0][1]) return data[1][0][1];
+  return [];
+}
+
+/* 採点（自動／修正の両方で使用） */
+function setVerdict(ok){
+  const w=state.queue[state.pos];
+  const first=(state.lastOk===null);
+  if(state.lastOk===true) state.score--;
+  if(state.lastOk!==null) state.wrong=state.wrong.filter(x=>x!==w);
+  state.lastOk=ok;
+  if(ok) state.score++; else if(!state.wrong.includes(w)) state.wrong.push(w);
+  if(first){ if(ok) state.streak++; else state.streak=0; }
+  $('fb').textContent= ok?'⭕️ 正解!':'❌ おしい!'; $('fb').className='fb '+(ok?'ok':'ng');
+  $('fixbtn').textContent= ok?'⚖️ 本当は書けてなかった → ✕にする':'⚖️ ちゃんと書けてた → ◯にする';
+}
+function fixJudge(){ if(state.lastOk===null)return; setVerdict(!state.lastOk); }
+
+/* 手書きの「答え合わせ」 */
+async function recognizeHand(){
+  if(state.locked)return;
+  if(!padStrokes.length){ flash('なにか書いてね ✍️'); return; }
+  const w=state.queue[state.pos];
+  const lang=typeIsE2J()?'ja':'en';
+  const btn=$('revealbtn'); const old=btn.textContent; btn.disabled=true; btn.textContent='認識中…';
+  let cands=null;
+  try{ cands=await recognizeInk(lang); }catch(e){ cands=null; }
+  btn.disabled=false; btn.textContent=old;
+  if(!cands || !cands.length){ flash('うまく読み取れませんでした。自分で採点してね'); revealHand(); return; }
+  const top=cands[0];
+  let ok=false;
+  for(const c of cands){ if(typeIsE2J()? checkJ(c,w) : norm(c)===norm(w.en)){ ok=true; break; } }
+  state.locked=true;
+  setVerdict(ok);
+  $('answer').innerHTML='✍️「<b>'+esc(top)+'</b>」 → 正解 <b>'+esc(w.en)+'</b>　'+w.jp+
+    ' <button class="spk" onclick="speak(\''+w.en+'\',this)" title="発音を聞く">🔊</button>';
+  if(!ok && !typeIsE2J()) showDiff(top, w.en);
+  showEx(w);
+  $('revealbtn').classList.add('hide');
+  $('fixbtn').classList.add('show');
+  $('next').classList.remove('hide');
+  state.answeredAt=Date.now();
+}
+
+/* 手書きの自己採点（通信できないとき） */
+function revealHand(){
+  if(state.graded)return;
+  const w=state.queue[state.pos];
+  state.locked=true;
+  $('answer').innerHTML='答え → <b>'+esc(w.en)+'</b>　'+w.jp+
+    ' <button class="spk" onclick="speak(\''+w.en+'\',this)" title="発音を聞く">🔊</button>';
+  showEx(w);
+  $('revealbtn').classList.add('hide');
+  $('fixbtn').classList.remove('show');
+  $('selfgrade').classList.add('show');
+}
+function gradeSelf(ok){
+  if(!state.locked||state.graded)return;
+  state.graded=true;
+  const w=state.queue[state.pos];
+  if(ok) good(w); else bad(w);
+  $('selfgrade').classList.remove('show');
+  $('next').classList.remove('hide');
+  state.answeredAt=Date.now();
+}
+
 $('submit').onclick=submitType;
 $('next').onclick=()=>{
   state.pos++;
@@ -347,8 +467,8 @@ $('ans').addEventListener('keydown',e=>{
 document.addEventListener('keydown',e=>{
   if(!$('quiz').classList.contains('active')||!state)return;
   if(e.key==='Enter'){
-    // 回答した直後の同じEnterでは進まない（200ms以上あけて次へ）
-    if(state.locked && (Date.now()-(state.answeredAt||0))>200){
+    // 回答した直後の同じEnterでは進まない／採点前は進まない
+    if(state.locked && !$('next').classList.contains('hide') && (Date.now()-(state.answeredAt||0))>200){
       e.preventDefault(); $('next').click();
     }
     return;
@@ -417,3 +537,18 @@ $('voicesel').addEventListener('change',()=>{
   curVoice=VOICES.find(v=>v.name===$('voicesel').value)||curVoice;
   speak('This is a sample voice.');
 });
+
+/* 手書き・採点の配線 */
+$('clearpad').onclick=clearPad;
+$('revealbtn').onclick=recognizeHand;
+$('fixbtn').onclick=fixJudge;
+document.querySelectorAll('.sg').forEach(b=>b.onclick=()=>gradeSelf(b.dataset.ok==='1'));
+
+/* 入力方法（キーボード / 手書き）の切替 */
+document.querySelectorAll('#inputmode .chip').forEach(c=>{
+  c.onclick=()=>{
+    inputMode=c.dataset.im;
+    document.querySelectorAll('#inputmode .chip').forEach(x=>x.classList.toggle('on',x===c));
+  };
+});
+window.addEventListener('resize',()=>{ if($('writebox').style.display==='block') setupPad(); });

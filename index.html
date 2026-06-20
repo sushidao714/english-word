@@ -9,15 +9,18 @@
 <body>
 <div class="wrap">
 
+<div class="wrap">
+
   <!-- ============ HOME ============ -->
   <section id="home" class="screen active">
     <header class="top">
       <h1>value1000単語帳</h1>
     </header>
-    <div class="chip-label">出題範囲</div>
+
+    <div class="chip-label">出題はんい</div>
     <div class="ranges" id="ranges"></div>
 
-    <div class="chip-label">モードを選ぶ</div>
+    <div class="chip-label">モードをえらぶ</div>
     <div class="modes">
       <button class="mode" data-mode="type-order">
         <span class="ic r">⌨️</span>
@@ -50,6 +53,12 @@
         <span class="arrow">›</span>
       </button>
     </div>
+    <div class="chip-label">入力方法（タイピング系・スマホは手書きが便利）</div>
+    <div class="ranges" id="inputmode">
+      <button class="chip on" data-im="keyboard">⌨️ キーボード</button>
+      <button class="chip" data-im="hand">✍️ 手書き</button>
+    </div>
+
     <div class="chip-label">声（発音）</div>
     <div class="voicebar">
       <select id="voicesel"><option>読み込み中…</option></select>
@@ -81,6 +90,16 @@
                spellcheck="false" placeholder="英単語をうつ…">
       </div>
 
+      <!-- handwriting -->
+      <div class="writebox" id="writebox">
+        <div class="writehint">指で答えを書いてみよう ✍️</div>
+        <canvas id="pad"></canvas>
+        <div class="writetools">
+          <button class="wbtn" id="clearpad">消す</button>
+          <button class="wbtn primary" id="revealbtn">答え合わせ</button>
+        </div>
+      </div>
+
       <!-- choices -->
       <div class="choices" id="choices"></div>
 
@@ -88,6 +107,12 @@
       <div class="answer" id="answer"></div>
       <div class="diff" id="diff"></div>
       <div class="ex" id="ex"></div>
+      <button class="fixbtn" id="fixbtn"></button>
+
+      <div class="selfgrade" id="selfgrade">
+        <button class="sg ng" data-ok="0">❌ まちがえた</button>
+        <button class="sg ok" data-ok="1">⭕️ できた</button>
+      </div>
 
       <div class="actions">
         <button class="btn primary" id="submit">こたえる</button>
