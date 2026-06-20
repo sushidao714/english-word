@@ -234,31 +234,37 @@ function render(){
   $('next').classList.add('hide');
   $('revealbtn').classList.remove('hide');
 
+  const hm = isTyping() && inputMode==='hand';
+  $('quiz').classList.toggle('handmode', hm);
+  $('writebox').style.display='';   // 表示はCSS(handmode)に任せる
+  $('resultwrap').classList.remove('filled');
+
   const tb=$('typebox'), ch=$('choices');
   if(isTyping()){
     ch.style.display='none'; ch.innerHTML='';
     // 方向ごとの表示（キーボード・手書き共通）
     if(typeIsE2J()){
-      $('dir').textContent='英語 → 日本語'+(inputMode==='hand'?'（手書き）':'（タイピング）');
+      $('dir').textContent='英語 → 日本語'+(hm?'（手書き）':'（タイピング）');
       $('prompt').className='prompt'; $('prompt').textContent=w.en;
       $('kana').textContent=w.kana;
     } else {
-      $('dir').textContent='日本語 → 英語'+(inputMode==='hand'?'（手書き）':'（タイピング）');
+      $('dir').textContent='日本語 → 英語'+(hm?'（手書き）':'（タイピング）');
       $('prompt').className='prompt'; $('prompt').textContent=w.jp;
       $('kana').textContent='';
     }
-    if(inputMode==='hand'){
-      tb.style.display='none'; $('writebox').style.display='block';
+    if(hm){
+      tb.style.display='none';
       $('submit').classList.add('hide');
-      setTimeout(setupPad,30);
+      requestAnimationFrame(()=>requestAnimationFrame(setupPad));
+      setTimeout(setupPad,90);
     } else {
-      $('writebox').style.display='none'; tb.style.display='block';
+      tb.style.display='block';
       const inp=$('ans'); inp.value=''; inp.className=''; inp.disabled=false;
       inp.placeholder = typeIsE2J()?'日本語の意味をうつ…':'英単語をうつ…';
       setTimeout(()=>inp.focus(),50);
     }
   } else {
-    tb.style.display='none'; $('writebox').style.display='none'; ch.style.display='flex';
+    tb.style.display='none'; ch.style.display='flex';
     if(isE2J()){
       $('dir').textContent='英語 → 日本語';
       $('prompt').className='prompt'; $('prompt').textContent=w.en;
@@ -356,9 +362,9 @@ function flash(msg){
 
 /* ---- 手書きパッド（線を記録） ---- */
 let padStrokes=[], padW=0, padH=0;
-function setupPad(){
+function setupPad(keep){
   const cv=$('pad'); if(!cv||!cv.clientWidth)return;
-  padStrokes=[];
+  if(!keep) padStrokes=[];
   const dpr=window.devicePixelRatio||1;
   cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
   padW=cv.clientWidth; padH=cv.clientHeight;
@@ -372,6 +378,7 @@ function setupPad(){
   cv.onpointermove=e=>{if(!drawing)return;e.preventDefault();const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();add(p);};
   const fin=()=>{ if(drawing&&cur&&cur.x.length) padStrokes.push([cur.x,cur.y,cur.t]); drawing=false; cur=null; };
   cv.onpointerup=fin; cv.onpointerleave=fin;
+  redrawPad();
 }
 function clearPad(){ padStrokes=[]; redrawPad(); }
 function redrawPad(){
@@ -428,6 +435,7 @@ async function recognizeHand(){
   showEx(w);
   $('revealbtn').classList.add('hide');
   $('writebox').style.display='none';
+  $('resultwrap').classList.add('filled');
   $('next').classList.remove('hide');
   state.answeredAt=Date.now();
 }
@@ -530,4 +538,6 @@ document.querySelectorAll('#inputmode .chip').forEach(c=>{
     document.querySelectorAll('#inputmode .chip').forEach(x=>x.classList.toggle('on',x===c));
   };
 });
-window.addEventListener('resize',()=>{ if($('writebox').style.display==='block') setupPad(); });
+let _rt;
+window.addEventListener('resize',()=>{ if($('quiz').classList.contains('handmode')){ clearTimeout(_rt); _rt=setTimeout(setupPad,120); } });
+window.addEventListener('orientationchange',()=>{ setTimeout(()=>{ if($('quiz').classList.contains('handmode')) setupPad(); },220); });
