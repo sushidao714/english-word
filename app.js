@@ -210,7 +210,7 @@ function startQuiz(mode, pool){
   let queue;
   if(mode==='type-order') queue = pool.slice().sort((a,b)=>a.n-b.n);
   else queue = shuffle(pool);
-  state={mode, queue, pos:0, score:0, total:queue.length, wrong:[], streak:0, locked:false, graded:false, lastOk:null};
+  state={mode, queue, pos:0, score:0, total:queue.length, wrong:[], streak:0, locked:false};
   show('quiz');
   render();
 }
@@ -232,11 +232,7 @@ function render(){
   $('ex').className='ex';$('ex').innerHTML='';
   $('submit').classList.remove('hide');
   $('next').classList.add('hide');
-  state.graded=false;
-  state.lastOk=null;
-  $('selfgrade').classList.remove('show');
   $('revealbtn').classList.remove('hide');
-  $('fixbtn').classList.remove('show');
 
   const tb=$('typebox'), ch=$('choices');
   if(isTyping()){
@@ -377,7 +373,19 @@ function setupPad(){
   const fin=()=>{ if(drawing&&cur&&cur.x.length) padStrokes.push([cur.x,cur.y,cur.t]); drawing=false; cur=null; };
   cv.onpointerup=fin; cv.onpointerleave=fin;
 }
-function clearPad(){ const cv=$('pad'); if(cv&&cv._ctx) cv._ctx.clearRect(0,0,cv.width,cv.height); padStrokes=[]; }
+function clearPad(){ padStrokes=[]; redrawPad(); }
+function redrawPad(){
+  const cv=$('pad'); if(!cv||!cv._ctx)return;
+  const ctx=cv._ctx;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  padStrokes.forEach(s=>{
+    const xs=s[0],ys=s[1]; if(!xs||!xs.length)return;
+    ctx.beginPath(); ctx.moveTo(xs[0],ys[0]);
+    for(let i=1;i<xs.length;i++) ctx.lineTo(xs[i],ys[i]);
+    ctx.stroke();
+  });
+}
+function undoPad(){ if(!padStrokes.length){ flash('もどせる線がないよ'); return; } padStrokes.pop(); redrawPad(); }
 
 /* オンライン手書き認識（Google Input Tools） */
 async function recognizeInk(lang){
@@ -390,21 +398,15 @@ async function recognizeInk(lang){
   return [];
 }
 
-/* 採点（自動／修正の両方で使用） */
-function setVerdict(ok){
+/* 採点 */
+function applyVerdict(ok){
   const w=state.queue[state.pos];
-  const first=(state.lastOk===null);
-  if(state.lastOk===true) state.score--;
-  if(state.lastOk!==null) state.wrong=state.wrong.filter(x=>x!==w);
-  state.lastOk=ok;
-  if(ok) state.score++; else if(!state.wrong.includes(w)) state.wrong.push(w);
-  if(first){ if(ok) state.streak++; else state.streak=0; }
+  if(ok){ state.score++; state.streak++; }
+  else { state.streak=0; if(!state.wrong.includes(w)) state.wrong.push(w); }
   $('fb').textContent= ok?'⭕️ 正解!':'❌ おしい!'; $('fb').className='fb '+(ok?'ok':'ng');
-  $('fixbtn').textContent= ok?'⚖️ 本当は書けてなかった → ✕にする':'⚖️ ちゃんと書けてた → ◯にする';
 }
-function fixJudge(){ if(state.lastOk===null)return; setVerdict(!state.lastOk); }
 
-/* 手書きの「答え合わせ」 */
+/* 手書きの「答え合わせ」（オンライン認識 → 自動採点） */
 async function recognizeHand(){
   if(state.locked)return;
   if(!padStrokes.length){ flash('なにか書いてね ✍️'); return; }
@@ -414,40 +416,18 @@ async function recognizeHand(){
   let cands=null;
   try{ cands=await recognizeInk(lang); }catch(e){ cands=null; }
   btn.disabled=false; btn.textContent=old;
-  if(!cands || !cands.length){ flash('うまく読み取れませんでした。自分で採点してね'); revealHand(); return; }
+  if(!cands || !cands.length){ flash('うまく読み取れませんでした。もう一度書いてね'); return; }
   const top=cands[0];
   let ok=false;
   for(const c of cands){ if(typeIsE2J()? checkJ(c,w) : norm(c)===norm(w.en)){ ok=true; break; } }
   state.locked=true;
-  setVerdict(ok);
+  applyVerdict(ok);
   $('answer').innerHTML='✍️「<b>'+esc(top)+'</b>」 → 正解 <b>'+esc(w.en)+'</b>　'+w.jp+
     ' <button class="spk" onclick="speak(\''+w.en+'\',this)" title="発音を聞く">🔊</button>';
   if(!ok && !typeIsE2J()) showDiff(top, w.en);
   showEx(w);
   $('revealbtn').classList.add('hide');
-  $('fixbtn').classList.add('show');
-  $('next').classList.remove('hide');
-  state.answeredAt=Date.now();
-}
-
-/* 手書きの自己採点（通信できないとき） */
-function revealHand(){
-  if(state.graded)return;
-  const w=state.queue[state.pos];
-  state.locked=true;
-  $('answer').innerHTML='答え → <b>'+esc(w.en)+'</b>　'+w.jp+
-    ' <button class="spk" onclick="speak(\''+w.en+'\',this)" title="発音を聞く">🔊</button>';
-  showEx(w);
-  $('revealbtn').classList.add('hide');
-  $('fixbtn').classList.remove('show');
-  $('selfgrade').classList.add('show');
-}
-function gradeSelf(ok){
-  if(!state.locked||state.graded)return;
-  state.graded=true;
-  const w=state.queue[state.pos];
-  if(ok) good(w); else bad(w);
-  $('selfgrade').classList.remove('show');
+  $('writebox').style.display='none';
   $('next').classList.remove('hide');
   state.answeredAt=Date.now();
 }
@@ -539,10 +519,9 @@ $('voicesel').addEventListener('change',()=>{
 });
 
 /* 手書き・採点の配線 */
+$('undopad').onclick=undoPad;
 $('clearpad').onclick=clearPad;
 $('revealbtn').onclick=recognizeHand;
-$('fixbtn').onclick=fixJudge;
-document.querySelectorAll('.sg').forEach(b=>b.onclick=()=>gradeSelf(b.dataset.ok==='1'));
 
 /* 入力方法（キーボード / 手書き）の切替 */
 document.querySelectorAll('#inputmode .chip').forEach(c=>{
